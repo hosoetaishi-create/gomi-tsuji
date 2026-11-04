@@ -1,18 +1,11 @@
-name: アプリを組み立てる
-
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-
+name: build
+on: [push, workflow_dispatch]
 permissions:
   contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -20,458 +13,109 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
-      - name: 設計図を展開
-        run: |
-          cat > settings.gradle.kts <<'GOMI_EOF'
-          pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          rootProject.name = "GomiTsuji"
-          include(":app")
-          GOMI_EOF
-          cat > build.gradle.kts <<'GOMI_EOF'
-          plugins {
-              id("com.android.application") version "8.7.3" apply false
-              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
-          }
-          GOMI_EOF
-          cat > gradle.properties <<'GOMI_EOF'
-          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-          android.useAndroidX=true
-          kotlin.code.style=official
-          GOMI_EOF
-          mkdir -p app
-          cat > app/build.gradle.kts <<'GOMI_EOF'
-          plugins {
-              id("com.android.application")
-              id("org.jetbrains.kotlin.android")
-          }
-
-          android {
-              namespace = "jp.kawaguchi.gomitsuji"
-              compileSdk = 35
-
-              defaultConfig {
-                  applicationId = "jp.kawaguchi.gomitsuji"
-                  minSdk = 26
-                  targetSdk = 35
-                  versionCode = 1
-                  versionName = "1.0"
-              }
-
-              buildTypes {
-                  release {
-                      isMinifyEnabled = false
-                  }
-              }
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-              kotlinOptions {
-                  jvmTarget = "17"
-              }
-          }
-          GOMI_EOF
-          mkdir -p app/src/main
-          cat > app/src/main/AndroidManifest.xml <<'GOMI_EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-              <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-
-              <application
-                  android:allowBackup="true"
-                  android:icon="@drawable/ic_trash"
-                  android:roundIcon="@drawable/ic_trash"
-                  android:label="@string/app_name"
-                  android:theme="@android:style/Theme.Material.Light.NoActionBar">
-
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-                  </activity>
-
-                  <receiver android:name=".AlarmReceiver" android:exported="false" />
-
-                  <receiver android:name=".BootReceiver" android:exported="true">
-                      <intent-filter>
-                          <action android:name="android.intent.action.BOOT_COMPLETED" />
-                          <action android:name="android.intent.action.TIME_SET" />
-                          <action android:name="android.intent.action.TIMEZONE_CHANGED" />
-                          <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-                          <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
-                      </intent-filter>
-                  </receiver>
-              </application>
-          </manifest>
-          GOMI_EOF
-          mkdir -p app/src/main/res/values
-          cat > app/src/main/res/values/strings.xml <<'GOMI_EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <string name="app_name">ゴミ出し通知</string>
-          </resources>
-          GOMI_EOF
-          mkdir -p app/src/main/res/drawable
-          cat > app/src/main/res/drawable/ic_trash.xml <<'GOMI_EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp"
-              android:height="108dp"
-              android:viewportWidth="108"
-              android:viewportHeight="108">
-              <path android:fillColor="#2E7D32" android:pathData="M0,0h108v108h-108z" />
-              <path android:fillColor="#FFFFFF"
-                  android:pathData="M44,30h20v4h14v6h-48v-6h14z M34,44h40l-3,36c0,2 -2,4 -4,4h-26c-2,0 -4,-2 -4,-4z" />
-          </vector>
-          GOMI_EOF
-          mkdir -p app/src/main/res/drawable
-          cat > app/src/main/res/drawable/ic_notify.xml <<'GOMI_EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="24dp"
-              android:height="24dp"
-              android:viewportWidth="24"
-              android:viewportHeight="24">
-              <path android:fillColor="#FFFFFF"
-                  android:pathData="M9,3h6v1h5v2H4V4h5z M6,8h12l-1,12c0,1 -1,2 -2,2H9c-1,0 -2,-1 -2,-2z" />
-          </vector>
-          GOMI_EOF
-          mkdir -p app/src/main/res/layout
-          cat > app/src/main/res/layout/activity_main.xml <<'GOMI_EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-              android:layout_width="match_parent"
-              android:layout_height="match_parent"
-              android:background="#F6F7F4"
-              android:fitsSystemWindows="true">
-
-              <LinearLayout
-                  android:layout_width="match_parent"
-                  android:layout_height="wrap_content"
-                  android:orientation="vertical"
-                  android:padding="20dp">
-
-                  <TextView
-                      android:layout_width="wrap_content"
-                      android:layout_height="wrap_content"
-                      android:text="ゴミ出し通知"
-                      android:textColor="#1B5E20"
-                      android:textSize="26sp"
-                      android:textStyle="bold" />
-
-                  <TextView
-                      android:layout_width="wrap_content"
-                      android:layout_height="wrap_content"
-                      android:layout_marginTop="2dp"
-                      android:text="川口市 カレンダー番号7／辻"
-                      android:textColor="#666666"
-                      android:textSize="14sp" />
-
-                  <TextView
-                      android:id="@+id/nextText"
-                      android:layout_width="match_parent"
-                      android:layout_height="wrap_content"
-                      android:layout_marginTop="20dp"
-                      android:background="#E8F5E9"
-                      android:padding="16dp"
-                      android:textColor="#1B1B1B"
-                      android:textSize="16sp" />
-
-                  <TextView
-                      android:id="@+id/warnText"
-                      android:layout_width="match_parent"
-                      android:layout_height="wrap_content"
-                      android:layout_marginTop="12dp"
-                      android:background="#FFF3E0"
-                      android:padding="12dp"
-                      android:textColor="#8A4B00"
-                      android:textSize="14sp"
-                      android:visibility="gone" />
-
-                  <Button
-                      android:id="@+id/fixButton"
-                      android:layout_width="match_parent"
-                      android:layout_height="wrap_content"
-                      android:layout_marginTop="8dp"
-                      android:text="設定を開く"
-                      android:visibility="gone" />
-
-                  <TextView
-                      android:layout_width="wrap_content"
-                      android:layout_height="wrap_content"
-                      android:layout_marginTop="24dp"
-                      android:text="これから2週間の収集日"
-                      android:textColor="#1B5E20"
-                      android:textSize="16sp"
-                      android:textStyle="bold" />
-
-                  <TextView
-                      android:id="@+id/listText"
-                      android:layout_width="match_parent"
-                      android:layout_height="wrap_content"
-                      android:layout_marginTop="8dp"
-                      android:lineSpacingExtra="6dp"
-                      android:textColor="#1B1B1B"
-                      android:textSize="15sp" />
-
-                  <Button
-                      android:id="@+id/testButton"
-                      android:layout_width="match_parent"
-                      android:layout_height="wrap_content"
-                      android:layout_marginTop="24dp"
-                      android:text="テスト通知を出す" />
-
-                  <TextView
-                      android:layout_width="match_parent"
-                      android:layout_height="wrap_content"
-                      android:layout_marginTop="16dp"
-                      android:text="年末年始などは収集日が変わることがあります。市のカレンダーも確認してください。"
-                      android:textColor="#888888"
-                      android:textSize="12sp" />
-              </LinearLayout>
-          </ScrollView>
-          GOMI_EOF
-          mkdir -p app/src/main/java/jp/kawaguchi/gomitsuji
-          cat > app/src/main/java/jp/kawaguchi/gomitsuji/GarbageSchedule.kt <<'GOMI_EOF'
-          package jp.kawaguchi.gomitsuji
-
-          import java.time.DayOfWeek
-          import java.time.LocalDate
-          import java.time.LocalDateTime
-          import java.time.LocalTime
-
-          /**
-           * 川口市 家庭ごみ収集日カレンダー 番号7（辻）
-           * https://kawaguchi-gomimaru.jp/calendar/76/
-           *
-           * 一般ごみ・有害ごみ : 毎週 火・金
-           * プラスチック       : 毎週 水
-           * びん・かん         : 第1・第3 木
-           * ペットボトル・繊維 : 第2・第4 木
-           * 金属・紙           : 第2・第4 金
-           */
-          object GarbageSchedule {
-
-              /** 通知する時刻（収集日の前日） */
-              val NOTIFY_TIME: LocalTime = LocalTime.of(21, 0)
-
-              /**
-               * 収集が休みになる日（年末年始など）。
-               * 市のカレンダーで休みと分かった日を "2027-01-01" の形で追加してください。
-               */
-              private val HOLIDAYS: Set<LocalDate> = setOf<String>(
-                  // "2026-12-31",
-                  // "2027-01-01",
-              ).map { LocalDate.parse(it) }.toSet()
-
-              /** その日に出せる品目 */
-              fun itemsFor(date: LocalDate): List<String> {
-                  if (date in HOLIDAYS) return emptyList()
-                  val nth = (date.dayOfMonth - 1) / 7 + 1 // 第何週の曜日か
-                  val items = mutableListOf<String>()
-                  when (date.dayOfWeek) {
-                      DayOfWeek.TUESDAY -> items += listOf("一般ごみ", "有害ごみ")
-                      DayOfWeek.WEDNESDAY -> items += "プラスチック"
-                      DayOfWeek.THURSDAY -> when (nth) {
-                          1, 3 -> items += listOf("びん", "かん")
-                          2, 4 -> items += listOf("ペットボトル", "繊維")
-                      }
-                      DayOfWeek.FRIDAY -> {
-                          items += listOf("一般ごみ", "有害ごみ")
-                          if (nth == 2 || nth == 4) items += listOf("金属", "紙")
-                      }
-                      else -> {}
-                  }
-                  return items
-              }
-
-              fun message(items: List<String>): String =
-                  "明日は${items.joinToString("・")}のゴミ出しの日です"
-
-              data class Next(val notifyAt: LocalDateTime, val collectionDate: LocalDate, val items: List<String>)
-
-              /** now より後で、次に通知すべきタイミング */
-              fun next(now: LocalDateTime): Next? {
-                  var day = now.toLocalDate()
-                  repeat(400) {
-                      val notifyAt = day.atTime(NOTIFY_TIME)
-                      val collection = day.plusDays(1)
-                      val items = itemsFor(collection)
-                      if (notifyAt.isAfter(now) && items.isNotEmpty()) {
-                          return Next(notifyAt, collection, items)
-                      }
-                      day = day.plusDays(1)
-                  }
-                  return null
-              }
-          }
-          GOMI_EOF
-          mkdir -p app/src/main/java/jp/kawaguchi/gomitsuji
-          cat > app/src/main/java/jp/kawaguchi/gomitsuji/Notifier.kt <<'GOMI_EOF'
-          package jp.kawaguchi.gomitsuji
-
-          import android.Manifest
-          import android.app.AlarmManager
-          import android.app.NotificationChannel
-          import android.app.NotificationManager
-          import android.app.PendingIntent
-          import android.content.Context
-          import android.content.Intent
-          import android.content.pm.PackageManager
-          import android.os.Build
-          import java.time.LocalDateTime
-          import java.time.ZoneId
-
-          object Notifier {
-              private const val CHANNEL_ID = "gomi"
-              private const val NOTIFICATION_ID = 1
-              const val EXTRA_MESSAGE = "message"
-
-              fun ensureChannel(context: Context) {
-                  val nm = context.getSystemService(NotificationManager::class.java)
-                  if (nm.getNotificationChannel(CHANNEL_ID) == null) {
-                      val ch = NotificationChannel(CHANNEL_ID, "ゴミ出しのお知らせ", NotificationManager.IMPORTANCE_HIGH)
-                      ch.description = "収集日の前日21時にお知らせします"
-                      nm.createNotificationChannel(ch)
-                  }
-              }
-
-              fun show(context: Context, message: String) {
-                  if (Build.VERSION.SDK_INT >= 33 &&
-                      context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-                  ) return
-                  ensureChannel(context)
-                  val open = PendingIntent.getActivity(
-                      context, 0, Intent(context, MainActivity::class.java),
-                      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-                  )
-                  val n = android.app.Notification.Builder(context, CHANNEL_ID)
-                      .setSmallIcon(R.drawable.ic_notify)
-                      .setContentTitle("ゴミ出しのお知らせ")
-                      .setContentText(message)
-                      .setStyle(android.app.Notification.BigTextStyle().bigText(message))
-                      .setContentIntent(open)
-                      .setAutoCancel(true)
-                      .build()
-                  context.getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, n)
-              }
-
-              /** 次の通知をセットし、その内容を返す */
-              fun scheduleNext(context: Context): GarbageSchedule.Next? {
-                  val next = GarbageSchedule.next(LocalDateTime.now()) ?: return null
-                  val am = context.getSystemService(AlarmManager::class.java)
-                  val intent = Intent(context, AlarmReceiver::class.java)
-                      .putExtra(EXTRA_MESSAGE, GarbageSchedule.message(next.items))
-                  val pi = PendingIntent.getBroadcast(
-                      context, 0, intent,
-                      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-                  )
-                  val triggerMillis = next.notifyAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                  if (canExact(context)) {
-                      am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMillis, pi)
-                  } else {
-                      // 正確なアラームが許可されていない場合（数分ずれることがあります）
-                      am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMillis, pi)
-                  }
-                  return next
-              }
-
-              fun canExact(context: Context): Boolean =
-                  Build.VERSION.SDK_INT < 31 || context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
-          }
-          GOMI_EOF
-          mkdir -p app/src/main/java/jp/kawaguchi/gomitsuji
-          cat > app/src/main/java/jp/kawaguchi/gomitsuji/Receivers.kt <<'GOMI_EOF'
-          package jp.kawaguchi.gomitsuji
-
-          import android.content.BroadcastReceiver
-          import android.content.Context
-          import android.content.Intent
-
-          /** 21時になったら通知を出し、次の通知をセットする */
-          class AlarmReceiver : BroadcastReceiver() {
-              override fun onReceive(context: Context, intent: Intent) {
-                  intent.getStringExtra(Notifier.EXTRA_MESSAGE)?.let { Notifier.show(context, it) }
-                  Notifier.scheduleNext(context)
-              }
-          }
-
-          /** 再起動・時刻変更・アプリ更新のあとも通知を続ける */
-          class BootReceiver : BroadcastReceiver() {
-              override fun onReceive(context: Context, intent: Intent) {
-                  Notifier.scheduleNext(context)
-              }
-          }
-          GOMI_EOF
-          mkdir -p app/src/main/java/jp/kawaguchi/gomitsuji
-          cat > app/src/main/java/jp/kawaguchi/gomitsuji/MainActivity.kt <<'GOMI_EOF'
-          package jp.kawaguchi.gomitsuji
-
-          import android.Manifest
-          import android.app.Activity
-          import android.content.Intent
-          import android.content.pm.PackageManager
-          import android.net.Uri
-          import android.os.Build
-          import android.os.Bundle
-          import android.provider.Settings
-          import android.view.View
-          import android.widget.Button
-          import android.widget.TextView
-          import java.time.LocalDate
-          import java.time.format.DateTimeFormatter
-          import java.time.format.TextStyle
-          import java.util.Locale
-
-          class MainActivity : Activity() {
-
-              private val dateFmt = DateTimeFormatter.ofPattern("M月d日")
-
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  super.onCreate(savedInstanceState)
-                  setContentView(R.layout.activity_main)
-                  Notifier.ensureChannel(this)
-
-                  if (Build.VERSION.SDK_INT >= 33 &&
-                      checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-                  ) {
-                      requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
-                  }
-
-                  findViewById<Button>(R.id.testButton).setOnClickListener {
-                      val next = GarbageSchedule.next(java.time.LocalDateTime.now())
-                      val msg = next?.let { GarbageSchedule.message(it.items) } ?: "明日はプラスチックのゴミ出しの日です"
-                      Notifier.show(this, msg)
-                  }
-              }
-
-              override fun onResume() {
-                  super.onResume()
-                  refresh()
-              }
-
-              override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-                  super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-                  refresh()
-              }
-
-              private fun dow(d: Loca
+      - run: |
+          base64 -d > p.tar.xz <<'END'
+          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
+          END
+          tar -xJf p.tar.xz
+          gradle assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk GomiTsuji.apk
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          files: GomiTsuji.apk
+          make_latest: true
