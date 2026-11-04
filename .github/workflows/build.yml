@@ -1,0 +1,477 @@
+name: アプリを組み立てる
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: 設計図を展開
+        run: |
+          cat > settings.gradle.kts <<'GOMI_EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "GomiTsuji"
+          include(":app")
+          GOMI_EOF
+          cat > build.gradle.kts <<'GOMI_EOF'
+          plugins {
+              id("com.android.application") version "8.7.3" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+          }
+          GOMI_EOF
+          cat > gradle.properties <<'GOMI_EOF'
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          kotlin.code.style=official
+          GOMI_EOF
+          mkdir -p app
+          cat > app/build.gradle.kts <<'GOMI_EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "jp.kawaguchi.gomitsuji"
+              compileSdk = 35
+
+              defaultConfig {
+                  applicationId = "jp.kawaguchi.gomitsuji"
+                  minSdk = 26
+                  targetSdk = 35
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+
+              buildTypes {
+                  release {
+                      isMinifyEnabled = false
+                  }
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+          }
+          GOMI_EOF
+          mkdir -p app/src/main
+          cat > app/src/main/AndroidManifest.xml <<'GOMI_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+              <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+              <application
+                  android:allowBackup="true"
+                  android:icon="@drawable/ic_trash"
+                  android:roundIcon="@drawable/ic_trash"
+                  android:label="@string/app_name"
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+
+                  <receiver android:name=".AlarmReceiver" android:exported="false" />
+
+                  <receiver android:name=".BootReceiver" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.BOOT_COMPLETED" />
+                          <action android:name="android.intent.action.TIME_SET" />
+                          <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                          <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                          <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+                      </intent-filter>
+                  </receiver>
+              </application>
+          </manifest>
+          GOMI_EOF
+          mkdir -p app/src/main/res/values
+          cat > app/src/main/res/values/strings.xml <<'GOMI_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <string name="app_name">ゴミ出し通知</string>
+          </resources>
+          GOMI_EOF
+          mkdir -p app/src/main/res/drawable
+          cat > app/src/main/res/drawable/ic_trash.xml <<'GOMI_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path android:fillColor="#2E7D32" android:pathData="M0,0h108v108h-108z" />
+              <path android:fillColor="#FFFFFF"
+                  android:pathData="M44,30h20v4h14v6h-48v-6h14z M34,44h40l-3,36c0,2 -2,4 -4,4h-26c-2,0 -4,-2 -4,-4z" />
+          </vector>
+          GOMI_EOF
+          mkdir -p app/src/main/res/drawable
+          cat > app/src/main/res/drawable/ic_notify.xml <<'GOMI_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="24dp"
+              android:height="24dp"
+              android:viewportWidth="24"
+              android:viewportHeight="24">
+              <path android:fillColor="#FFFFFF"
+                  android:pathData="M9,3h6v1h5v2H4V4h5z M6,8h12l-1,12c0,1 -1,2 -2,2H9c-1,0 -2,-1 -2,-2z" />
+          </vector>
+          GOMI_EOF
+          mkdir -p app/src/main/res/layout
+          cat > app/src/main/res/layout/activity_main.xml <<'GOMI_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:background="#F6F7F4"
+              android:fitsSystemWindows="true">
+
+              <LinearLayout
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:orientation="vertical"
+                  android:padding="20dp">
+
+                  <TextView
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="ゴミ出し通知"
+                      android:textColor="#1B5E20"
+                      android:textSize="26sp"
+                      android:textStyle="bold" />
+
+                  <TextView
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:layout_marginTop="2dp"
+                      android:text="川口市 カレンダー番号7／辻"
+                      android:textColor="#666666"
+                      android:textSize="14sp" />
+
+                  <TextView
+                      android:id="@+id/nextText"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:layout_marginTop="20dp"
+                      android:background="#E8F5E9"
+                      android:padding="16dp"
+                      android:textColor="#1B1B1B"
+                      android:textSize="16sp" />
+
+                  <TextView
+                      android:id="@+id/warnText"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:layout_marginTop="12dp"
+                      android:background="#FFF3E0"
+                      android:padding="12dp"
+                      android:textColor="#8A4B00"
+                      android:textSize="14sp"
+                      android:visibility="gone" />
+
+                  <Button
+                      android:id="@+id/fixButton"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:layout_marginTop="8dp"
+                      android:text="設定を開く"
+                      android:visibility="gone" />
+
+                  <TextView
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:layout_marginTop="24dp"
+                      android:text="これから2週間の収集日"
+                      android:textColor="#1B5E20"
+                      android:textSize="16sp"
+                      android:textStyle="bold" />
+
+                  <TextView
+                      android:id="@+id/listText"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:layout_marginTop="8dp"
+                      android:lineSpacingExtra="6dp"
+                      android:textColor="#1B1B1B"
+                      android:textSize="15sp" />
+
+                  <Button
+                      android:id="@+id/testButton"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:layout_marginTop="24dp"
+                      android:text="テスト通知を出す" />
+
+                  <TextView
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:layout_marginTop="16dp"
+                      android:text="年末年始などは収集日が変わることがあります。市のカレンダーも確認してください。"
+                      android:textColor="#888888"
+                      android:textSize="12sp" />
+              </LinearLayout>
+          </ScrollView>
+          GOMI_EOF
+          mkdir -p app/src/main/java/jp/kawaguchi/gomitsuji
+          cat > app/src/main/java/jp/kawaguchi/gomitsuji/GarbageSchedule.kt <<'GOMI_EOF'
+          package jp.kawaguchi.gomitsuji
+
+          import java.time.DayOfWeek
+          import java.time.LocalDate
+          import java.time.LocalDateTime
+          import java.time.LocalTime
+
+          /**
+           * 川口市 家庭ごみ収集日カレンダー 番号7（辻）
+           * https://kawaguchi-gomimaru.jp/calendar/76/
+           *
+           * 一般ごみ・有害ごみ : 毎週 火・金
+           * プラスチック       : 毎週 水
+           * びん・かん         : 第1・第3 木
+           * ペットボトル・繊維 : 第2・第4 木
+           * 金属・紙           : 第2・第4 金
+           */
+          object GarbageSchedule {
+
+              /** 通知する時刻（収集日の前日） */
+              val NOTIFY_TIME: LocalTime = LocalTime.of(21, 0)
+
+              /**
+               * 収集が休みになる日（年末年始など）。
+               * 市のカレンダーで休みと分かった日を "2027-01-01" の形で追加してください。
+               */
+              private val HOLIDAYS: Set<LocalDate> = setOf<String>(
+                  // "2026-12-31",
+                  // "2027-01-01",
+              ).map { LocalDate.parse(it) }.toSet()
+
+              /** その日に出せる品目 */
+              fun itemsFor(date: LocalDate): List<String> {
+                  if (date in HOLIDAYS) return emptyList()
+                  val nth = (date.dayOfMonth - 1) / 7 + 1 // 第何週の曜日か
+                  val items = mutableListOf<String>()
+                  when (date.dayOfWeek) {
+                      DayOfWeek.TUESDAY -> items += listOf("一般ごみ", "有害ごみ")
+                      DayOfWeek.WEDNESDAY -> items += "プラスチック"
+                      DayOfWeek.THURSDAY -> when (nth) {
+                          1, 3 -> items += listOf("びん", "かん")
+                          2, 4 -> items += listOf("ペットボトル", "繊維")
+                      }
+                      DayOfWeek.FRIDAY -> {
+                          items += listOf("一般ごみ", "有害ごみ")
+                          if (nth == 2 || nth == 4) items += listOf("金属", "紙")
+                      }
+                      else -> {}
+                  }
+                  return items
+              }
+
+              fun message(items: List<String>): String =
+                  "明日は${items.joinToString("・")}のゴミ出しの日です"
+
+              data class Next(val notifyAt: LocalDateTime, val collectionDate: LocalDate, val items: List<String>)
+
+              /** now より後で、次に通知すべきタイミング */
+              fun next(now: LocalDateTime): Next? {
+                  var day = now.toLocalDate()
+                  repeat(400) {
+                      val notifyAt = day.atTime(NOTIFY_TIME)
+                      val collection = day.plusDays(1)
+                      val items = itemsFor(collection)
+                      if (notifyAt.isAfter(now) && items.isNotEmpty()) {
+                          return Next(notifyAt, collection, items)
+                      }
+                      day = day.plusDays(1)
+                  }
+                  return null
+              }
+          }
+          GOMI_EOF
+          mkdir -p app/src/main/java/jp/kawaguchi/gomitsuji
+          cat > app/src/main/java/jp/kawaguchi/gomitsuji/Notifier.kt <<'GOMI_EOF'
+          package jp.kawaguchi.gomitsuji
+
+          import android.Manifest
+          import android.app.AlarmManager
+          import android.app.NotificationChannel
+          import android.app.NotificationManager
+          import android.app.PendingIntent
+          import android.content.Context
+          import android.content.Intent
+          import android.content.pm.PackageManager
+          import android.os.Build
+          import java.time.LocalDateTime
+          import java.time.ZoneId
+
+          object Notifier {
+              private const val CHANNEL_ID = "gomi"
+              private const val NOTIFICATION_ID = 1
+              const val EXTRA_MESSAGE = "message"
+
+              fun ensureChannel(context: Context) {
+                  val nm = context.getSystemService(NotificationManager::class.java)
+                  if (nm.getNotificationChannel(CHANNEL_ID) == null) {
+                      val ch = NotificationChannel(CHANNEL_ID, "ゴミ出しのお知らせ", NotificationManager.IMPORTANCE_HIGH)
+                      ch.description = "収集日の前日21時にお知らせします"
+                      nm.createNotificationChannel(ch)
+                  }
+              }
+
+              fun show(context: Context, message: String) {
+                  if (Build.VERSION.SDK_INT >= 33 &&
+                      context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                  ) return
+                  ensureChannel(context)
+                  val open = PendingIntent.getActivity(
+                      context, 0, Intent(context, MainActivity::class.java),
+                      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                  )
+                  val n = android.app.Notification.Builder(context, CHANNEL_ID)
+                      .setSmallIcon(R.drawable.ic_notify)
+                      .setContentTitle("ゴミ出しのお知らせ")
+                      .setContentText(message)
+                      .setStyle(android.app.Notification.BigTextStyle().bigText(message))
+                      .setContentIntent(open)
+                      .setAutoCancel(true)
+                      .build()
+                  context.getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, n)
+              }
+
+              /** 次の通知をセットし、その内容を返す */
+              fun scheduleNext(context: Context): GarbageSchedule.Next? {
+                  val next = GarbageSchedule.next(LocalDateTime.now()) ?: return null
+                  val am = context.getSystemService(AlarmManager::class.java)
+                  val intent = Intent(context, AlarmReceiver::class.java)
+                      .putExtra(EXTRA_MESSAGE, GarbageSchedule.message(next.items))
+                  val pi = PendingIntent.getBroadcast(
+                      context, 0, intent,
+                      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                  )
+                  val triggerMillis = next.notifyAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                  if (canExact(context)) {
+                      am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMillis, pi)
+                  } else {
+                      // 正確なアラームが許可されていない場合（数分ずれることがあります）
+                      am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMillis, pi)
+                  }
+                  return next
+              }
+
+              fun canExact(context: Context): Boolean =
+                  Build.VERSION.SDK_INT < 31 || context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
+          }
+          GOMI_EOF
+          mkdir -p app/src/main/java/jp/kawaguchi/gomitsuji
+          cat > app/src/main/java/jp/kawaguchi/gomitsuji/Receivers.kt <<'GOMI_EOF'
+          package jp.kawaguchi.gomitsuji
+
+          import android.content.BroadcastReceiver
+          import android.content.Context
+          import android.content.Intent
+
+          /** 21時になったら通知を出し、次の通知をセットする */
+          class AlarmReceiver : BroadcastReceiver() {
+              override fun onReceive(context: Context, intent: Intent) {
+                  intent.getStringExtra(Notifier.EXTRA_MESSAGE)?.let { Notifier.show(context, it) }
+                  Notifier.scheduleNext(context)
+              }
+          }
+
+          /** 再起動・時刻変更・アプリ更新のあとも通知を続ける */
+          class BootReceiver : BroadcastReceiver() {
+              override fun onReceive(context: Context, intent: Intent) {
+                  Notifier.scheduleNext(context)
+              }
+          }
+          GOMI_EOF
+          mkdir -p app/src/main/java/jp/kawaguchi/gomitsuji
+          cat > app/src/main/java/jp/kawaguchi/gomitsuji/MainActivity.kt <<'GOMI_EOF'
+          package jp.kawaguchi.gomitsuji
+
+          import android.Manifest
+          import android.app.Activity
+          import android.content.Intent
+          import android.content.pm.PackageManager
+          import android.net.Uri
+          import android.os.Build
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.view.View
+          import android.widget.Button
+          import android.widget.TextView
+          import java.time.LocalDate
+          import java.time.format.DateTimeFormatter
+          import java.time.format.TextStyle
+          import java.util.Locale
+
+          class MainActivity : Activity() {
+
+              private val dateFmt = DateTimeFormatter.ofPattern("M月d日")
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContentView(R.layout.activity_main)
+                  Notifier.ensureChannel(this)
+
+                  if (Build.VERSION.SDK_INT >= 33 &&
+                      checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                  ) {
+                      requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+                  }
+
+                  findViewById<Button>(R.id.testButton).setOnClickListener {
+                      val next = GarbageSchedule.next(java.time.LocalDateTime.now())
+                      val msg = next?.let { GarbageSchedule.message(it.items) } ?: "明日はプラスチックのゴミ出しの日です"
+                      Notifier.show(this, msg)
+                  }
+              }
+
+              override fun onResume() {
+                  super.onResume()
+                  refresh()
+              }
+
+              override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+                  super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+                  refresh()
+              }
+
+              private fun dow(d: Loca
